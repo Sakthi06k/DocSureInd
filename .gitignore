@@ -1,0 +1,22 @@
+﻿# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*.class
+backend/venv/
+backend/.env
+*.env.local
+
+# Node.js & Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local Test Output
+test-data/

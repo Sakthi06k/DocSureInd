@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+google-genai
+google-cloud-storage
+google-cloud-firestore
+pydantic>=2.0
+rapidfuzz
+python-dateutil
+pymupdf
+pillow

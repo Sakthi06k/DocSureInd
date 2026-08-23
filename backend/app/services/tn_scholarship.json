@@ -1,0 +1,37 @@
+{
+  "id": "tn_student_scholarship_demo",
+  "name": "Tamil Nadu Student Scholarship — Prototype",
+  "version": "2026-01",
+  "verified_on": "2026-08-01",
+  "official_sources": [
+    {
+      "title": "Official Tamil Nadu Scholarship Portal",
+      "url": "https://www.tnscholarship.tn.gov.in"
+    }
+  ],
+  "required_documents": [
+    "income_certificate",
+    "community_certificate",
+    "student_id",
+    "bank_passbook"
+  ],
+  "comparison_rules": [
+    {
+      "field": "holder_name",
+      "documents": [
+        "income_certificate",
+        "community_certificate",
+        "student_id"
+      ],
+      "match": "fuzzy",
+      "threshold": 0.88
+    }
+  ],
+  "validity_rules": [
+    {
+      "document": "income_certificate",
+      "expiry_field": "expiry_date"
+    }
+  ],
+  "manual_review_threshold": 0.80
+}
