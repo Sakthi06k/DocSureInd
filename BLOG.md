@@ -258,8 +258,8 @@ If that separation holds, a student like Priya finds out about a name mismatch o
 
 ## 🌐 Links & Demos
 
-* **Official Website:** [docsureind.com](https://your-main-website-link.com)
-* **Staging Demo:** [DocSureInd Staging App](https://docsureind-web-staging-lxanronfuq-el.a.run.app)
+* **Live demo:** [DocSureInd Staging App](https://drive.google.com/file/d/1jzdqWrkh7EIbgXODGnUw_DjjQ3WArAjN/view?usp=sharing)
+* **Access Application:** [docsureind.com](https://docsureind-web-staging-lxanronfuq-el.a.run.app/)
 
 > ⚠️ **Notice:** When testing the staging demonstration, please use **synthetic or redacted documents only**.
 
