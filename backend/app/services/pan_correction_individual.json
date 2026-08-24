@@ -1,0 +1,123 @@
+{
+  "id": "pan_correction_individual",
+  "name": "PAN Data Correction — Individual Applicant",
+  "department": "Income Tax Department, India",
+  "scope": "India",
+  "status": "VERIFIED",
+  "version": "0.1.0",
+  "verified_on": "2026-08-24",
+  "effective_from": null,
+  "supported_scenarios": [
+    "Individual PAN card holders",
+    "Corrections to Name, Date of Birth, or Address fields"
+  ],
+  "unsupported_scenarios": [
+    "Firm, Company, or Trust PAN applications",
+    "New PAN card allotment (Form 49A)"
+  ],
+  "questionnaire": [
+    {
+      "id": "is_individual_correction",
+      "label": "Are you correcting details for an individual PAN card?",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "correcting_name",
+      "label": "Are you correcting your name on the PAN card?",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "correcting_dob",
+      "label": "Are you correcting your Date of Birth on the PAN card?",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "correcting_address",
+      "label": "Are you correcting your residential address on the PAN card?",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "using_aadhaar_route",
+      "label": "Are you submitting using the Aadhaar-based e-KYC route?",
+      "type": "boolean",
+      "required": true
+    }
+  ],
+  "document_types": {
+    "aadhaar_card": {
+      "label": "Aadhaar Card",
+      "critical_fields": ["holder_name"]
+    },
+    "voter_id": {
+      "label": "Voter ID Card",
+      "critical_fields": ["holder_name"]
+    },
+    "passport": {
+      "label": "Indian Passport Document",
+      "critical_fields": ["holder_name"]
+    },
+    "pan_card_copy": {
+      "label": "Copy of Existing PAN Card",
+      "critical_fields": ["holder_name"]
+    },
+    "pan_card": {
+      "label": "PAN Card",
+      "critical_fields": ["holder_name"]
+    },
+    "marriage_certificate": {
+      "label": "Marriage Certificate",
+      "critical_fields": ["holder_name"]
+    },
+    "gazette_notification": {
+      "label": "Gazette Notification Document",
+      "critical_fields": ["holder_name"]
+    }
+  },
+  "rules": [
+    {
+      "rule_id": "pan_proof",
+      "title": "Proof of Existing PAN",
+      "operator": "one_of",
+      "documents": ["pan_card_copy", "pan_card"],
+      "severity_if_missing": "error",
+      "source_ids": ["pan_source_001"]
+    },
+    {
+      "rule_id": "pan_identity_proof",
+      "title": "One accepted proof of identity",
+      "operator": "one_of",
+      "documents": ["aadhaar_card", "voter_id", "passport"],
+      "severity_if_missing": "error",
+      "source_ids": ["pan_source_001"]
+    },
+    {
+      "rule_id": "pan_address_proof",
+      "title": "One accepted proof of address",
+      "operator": "one_of",
+      "documents": ["aadhaar_card", "voter_id", "passport"],
+      "severity_if_missing": "error",
+      "source_ids": ["pan_source_001"]
+    },
+    {
+      "rule_id": "pan_name_correction_proof",
+      "title": "Name correction supporting proof",
+      "operator": "conditional",
+      "when": {
+        "field": "correcting_name",
+        "operator": "equals",
+        "value": true
+      },
+      "require": {
+        "operator": "one_of",
+        "documents": ["marriage_certificate", "gazette_notification", "passport"]
+      },
+      "severity_if_missing": "error",
+      "source_ids": ["pan_source_001"]
+    }
+  ],
+  "official_source_ids": ["pan_source_001"]
+}

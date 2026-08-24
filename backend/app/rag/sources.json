@@ -1,0 +1,44 @@
+{
+  "tn_scholarship_source_001": {
+    "source_id": "tn_scholarship_source_001",
+    "template_id": "tn_post_matric_scholarship_bc",
+    "template_version": "1.0.0",
+    "status": "APPROVED",
+    "title": "Backward Classes Welfare Department Educational Schemes",
+    "department": "Backward Classes, Most Backward Classes and Minorities Welfare Department",
+    "url": "https://www.bcmbcmw.tn.gov.in/welfare_schemes_education.htm",
+    "excerpt": "Post-Matric Scholarship is sanctioned to BC/MBC/DNC students whose parental annual income does not exceed 2.5 Lakhs. The applicant must submit a valid community certificate, income certificate, and student details.",
+    "retrieved_on": "2026-08-20",
+    "effective_from": "2026-06-01",
+    "content_hash": "sha256-scholarship-hash-xyz123",
+    "reviewed_by": "admin-reviewer-01"
+  },
+  "passport_source_001": {
+    "source_id": "passport_source_001",
+    "template_id": "passport_fresh_adult_ordinary",
+    "template_version": "0.1.0",
+    "status": "APPROVED",
+    "title": "Passport Seva official guidelines for fresh passport",
+    "department": "Ministry of External Affairs, India",
+    "url": "https://www.passportindia.gov.in/AppOnlineProject/online/faqAddressProof",
+    "excerpt": "For a fresh passport application for an adult, the applicant must supply one valid proof of address (such as Aadhaar, Voter ID, or Bank Passbook), one proof of identity (such as PAN or Voter ID), and one birth proof (such as Birth Certificate or Aadhaar). If name is changed, a marriage certificate or gazette notification copy is required.",
+    "retrieved_on": "2026-08-20",
+    "effective_from": "2026-01-01",
+    "content_hash": "sha256-passport-hash-abc567",
+    "reviewed_by": "admin-reviewer-01"
+  },
+  "pan_source_001": {
+    "source_id": "pan_source_001",
+    "template_id": "pan_correction_individual",
+    "template_version": "0.1.0",
+    "status": "APPROVED",
+    "title": "UTIITSL / NSDL official guidelines for PAN correction",
+    "department": "Income Tax Department, India",
+    "url": "https://www.tin-nsdl.com/services/pan/pan-index.html",
+    "excerpt": "For individual PAN card corrections, the applicant must supply proof of existing PAN (PAN card copy), proof of identity (Aadhaar or Passport), and proof of address. If name correction is selected, a valid marriage certificate or gazette notification showing the name transition is mandatory.",
+    "retrieved_on": "2026-08-20",
+    "effective_from": "2026-01-01",
+    "content_hash": "sha256-pan-hash-def890",
+    "reviewed_by": "admin-reviewer-01"
+  }
+}

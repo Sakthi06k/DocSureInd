@@ -1,0 +1,103 @@
+{
+  "id": "passport_fresh_adult_ordinary",
+  "name": "Fresh Ordinary Passport — Adult Applicant",
+  "department": "Ministry of External Affairs, India",
+  "scope": "India",
+  "status": "VERIFIED",
+  "version": "0.1.0",
+  "verified_on": "2026-08-24",
+  "effective_from": null,
+  "supported_scenarios": [
+    "Adult applicant (18 years or older)",
+    "Fresh ordinary passport application"
+  ],
+  "unsupported_scenarios": [
+    "Minor applicant (under 18 years)",
+    "Passport reissue or correction",
+    "Tatkaal-specific fast-track applications",
+    "Diplomatic or official passports"
+  ],
+  "questionnaire": [
+    {
+      "id": "is_adult_fresh_ordinary",
+      "label": "Are you an adult applicant (18+) applying for a fresh ordinary passport?",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "name_changed",
+      "label": "Has the applicant legally changed their name?",
+      "type": "boolean",
+      "required": true
+    }
+  ],
+  "document_types": {
+    "aadhaar_card": {
+      "label": "Aadhaar Card",
+      "critical_fields": ["holder_name"]
+    },
+    "voter_id": {
+      "label": "Voter ID Card",
+      "critical_fields": ["holder_name"]
+    },
+    "pan_card": {
+      "label": "PAN Card",
+      "critical_fields": ["holder_name"]
+    },
+    "birth_certificate": {
+      "label": "Birth Certificate",
+      "critical_fields": ["holder_name"]
+    },
+    "marriage_certificate": {
+      "label": "Marriage Certificate",
+      "critical_fields": ["holder_name"]
+    },
+    "gazette_notification": {
+      "label": "Gazette Notification Document",
+      "critical_fields": ["holder_name"]
+    }
+  },
+  "rules": [
+    {
+      "rule_id": "passport_address_proof",
+      "title": "One accepted proof of address",
+      "operator": "one_of",
+      "documents": ["aadhaar_card", "voter_id"],
+      "severity_if_missing": "error",
+      "source_ids": ["passport_source_001"]
+    },
+    {
+      "rule_id": "passport_identity_proof",
+      "title": "One accepted proof of identity",
+      "operator": "one_of",
+      "documents": ["aadhaar_card", "voter_id", "pan_card"],
+      "severity_if_missing": "error",
+      "source_ids": ["passport_source_001"]
+    },
+    {
+      "rule_id": "passport_birth_proof",
+      "title": "One accepted proof of birth",
+      "operator": "one_of",
+      "documents": ["birth_certificate", "aadhaar_card", "pan_card"],
+      "severity_if_missing": "error",
+      "source_ids": ["passport_source_001"]
+    },
+    {
+      "rule_id": "passport_name_change_proof",
+      "title": "Name change supporting proof",
+      "operator": "conditional",
+      "when": {
+        "field": "name_changed",
+        "operator": "equals",
+        "value": true
+      },
+      "require": {
+        "operator": "one_of",
+        "documents": ["marriage_certificate", "gazette_notification"]
+      },
+      "severity_if_missing": "error",
+      "source_ids": ["passport_source_001"]
+    }
+  ],
+  "official_source_ids": ["passport_source_001"]
+}
