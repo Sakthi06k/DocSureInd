@@ -1,12 +1,14 @@
 {
-  "id": "tn_student_scholarship_demo",
-  "name": "Tamil Nadu Student Scholarship — Prototype",
-  "version": "2026-01",
-  "verified_on": "2026-08-01",
+  "id": "tn_post_matric_scholarship_bc",
+  "name": "Tamil Nadu Post-Matric Scholarship for BC/MBC/DNC Students",
+  "department": "Backward Classes, Most Backward Classes and Minorities Welfare Department",
+  "version": "1.0.0",
+  "verified_on": "2026-08-23",
+  "applicable_academic_year": "2026-2027",
   "official_sources": [
     {
-      "title": "Official Tamil Nadu Scholarship Portal",
-      "url": "https://www.tnscholarship.tn.gov.in"
+      "title": "Backward Classes Welfare Department Educational Schemes",
+      "url": "https://www.bcmbcmw.tn.gov.in/welfare_schemes_education.htm"
     }
   ],
   "required_documents": [

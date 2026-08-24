@@ -1,11 +1,130 @@
 import re
 import unicodedata
 from datetime import date
-from rapidfuzz.fuzz import ratio
+from rapidfuzz.fuzz import ratio, token_sort_ratio
 from typing import List, Set
 
-from .models import ExtractedDocument, ValidationIssue
+from .models import ExtractedDocument, ValidationIssue, VerificationStatus
 from .config import get_scholarship_rules
+
+# Scheme-specific critical fields configurations (as verified against official guidelines)
+CRITICAL_FIELDS = {
+    "tn_post_matric_scholarship_bc": {
+        "income_certificate": {
+            "holder_name",
+            "certificate_number",
+            "annual_income",
+        },
+        "community_certificate": {
+            "holder_name",
+            "certificate_number",
+            "community",
+        },
+        "student_id": {
+            "holder_name",
+            "institution_name",
+        },
+        "bank_passbook": {
+            "bank_account_holder",
+            "bank_account_last4",
+            "ifsc",
+        },
+    }
+}
+
+
+def has_value(value: str | None) -> bool:
+    """Returns True if the value is present and contains non-whitespace text."""
+    return bool(value and value.strip())
+
+
+def contains_initial(tokens: List[str]) -> bool:
+    """Returns True if any token in the split string represents an initial (length 1)."""
+    return any(len(token) == 1 for token in tokens)
+
+
+def calculate_status(
+    documents: List[ExtractedDocument],
+    issues: List[ValidationIssue],
+) -> VerificationStatus:
+    """Derives verification status cleanly from documents and issues list:
+
+    1. Return UNABLE_TO_VERIFY if no docs exist, if any processing fails, or if all are unknown.
+    2. Return CORRECTIONS_REQUIRED if any blocking error exists.
+    3. Return MANUAL_REVIEW_REQUIRED if any warnings or review flags exist.
+    4. Return READY otherwise.
+    """
+    if not documents:
+        return "UNABLE_TO_VERIFY"
+
+    if any(issue.code.startswith("processing_failed") for issue in issues):
+        return "UNABLE_TO_VERIFY"
+
+    if all(doc.document_type == "unknown" for doc in documents):
+        return "UNABLE_TO_VERIFY"
+
+    if any(issue.severity == "error" for issue in issues):
+        return "CORRECTIONS_REQUIRED"
+
+    if any(issue.severity in {"review", "warning"} for issue in issues):
+        return "MANUAL_REVIEW_REQUIRED"
+
+    return "READY"
+
+
+def calculate_score(issues: List[ValidationIssue]) -> int:
+    """Calculates the compliance readiness score using deduplicated rule deductions:
+
+    - Start at 100
+    - Missing required document:             -25 (per doc type)
+    - Critical identity mismatch:            -25 (deduplicated for package)
+    - Expired required document:             -20 (per doc type)
+    - Unreadable critical field (low conf):  -15 (deduplicated by field code)
+    - Minor name variation/manual review:     -5  (deduplicated for package)
+    - Unknown document:                       -5  (per doc type)
+    - Duplicate upload:                       -5  (per warning)
+    """
+    score = 100
+    has_name_mismatch = False
+    has_name_variation = False
+
+    # Deduplicate missing documents by type
+    missing_docs = {i.code for i in issues if i.code.startswith("missing_")}
+    score -= len(missing_docs) * 25
+
+    # Deduplicate expired documents by type
+    expired_docs = {i.code for i in issues if i.code.startswith("expired_")}
+    score -= len(expired_docs) * 20
+
+    # Deduplicate unreadable or low confidence critical fields by code
+    critical_errors = {
+        i.code for i in issues 
+        if i.code.startswith("unreadable_") or i.code.startswith("low_confidence_")
+    }
+    score -= len(critical_errors) * 15
+
+    # Deduplicate unknown documents
+    unknown_docs = {i.code for i in issues if i.code.startswith("unknown_document_")}
+    score -= len(unknown_docs) * 5
+
+    # Deduplicate warning duplicates
+    duplicate_docs = {i.code for i in issues if i.code.startswith("duplicate_")}
+    score -= len(duplicate_docs) * 5
+
+    # Identity comparison check
+    for issue in issues:
+        if "name_mismatch" in issue.code:
+            has_name_mismatch = True
+        elif "name_variation" in issue.code:
+            has_name_variation = True
+
+    if has_name_mismatch:
+        score -= 25
+    elif has_name_variation:
+        score -= 5
+
+    return max(0, score)
+
 
 def normalize_name(value: str | None) -> str:
     """Normalizes names by lowercasing, resolving Unicode differences,
@@ -15,7 +134,6 @@ def normalize_name(value: str | None) -> str:
     if not value:
         return ""
     value = unicodedata.normalize("NFKC", value).casefold()
-    # Support English letters, numbers, spaces, and the Tamil Unicode range (U+0B80 to U+0BFF)
     value = re.sub(r"[^a-z0-9\u0B80-\u0BFF ]", " ", value)
     return " ".join(value.split())
 
@@ -28,12 +146,13 @@ def validate_documents(
     
     # Load dynamic scholarship rules
     rules = get_scholarship_rules()
+    scheme_id = rules.get("id", "tn_post_matric_scholarship_bc")
     required_docs: Set[str] = set(rules.get("required_documents", []))
     manual_review_threshold = rules.get("manual_review_threshold", 0.80)
     
-    # Get primary URL source
+    # Get primary URL source (Tamil Nadu BC/MBC Welfare Department)
     official_sources = rules.get("official_sources", [])
-    source_url = official_sources[0]["url"] if official_sources else "https://www.tnscholarship.tn.gov.in"
+    source_url = official_sources[0]["url"] if official_sources else "https://www.bcmbcmw.tn.gov.in/welfare_schemes_education.htm"
 
     # 1. Document presence and duplicates checks
     present_types = [doc.document_type for doc in documents]
@@ -52,7 +171,7 @@ def validate_documents(
                 )
             )
 
-    # Detect duplicate uploads of the same type
+    # Detect duplicate uploads and unclassified documents
     seen_types = set()
     for index, doc in enumerate(documents):
         if doc.document_type == "unknown":
@@ -86,57 +205,83 @@ def validate_documents(
         else:
             seen_types.add(doc.document_type)
 
-    # 2. Low-confidence extraction checks (Threshold check)
+    # 2. Critical fields validation (tied specifically to the scheme and doc type)
+    scheme_critical_fields = CRITICAL_FIELDS.get(scheme_id, {})
+
     for index, document in enumerate(documents):
-        if document.document_type == "unknown":
+        dtype = document.document_type
+        if dtype == "unknown" or dtype not in scheme_critical_fields:
             continue
 
-        # Fields that are critical and require high confidence
-        critical_fields = [
-            ("holder_name", document.holder_name),
-            ("expiry_date", document.expiry_date),
-            ("certificate_number", document.certificate_number),
-            ("annual_income", document.annual_income),
-        ]
+        critical_fields_list = scheme_critical_fields[dtype]
 
-        for field_name, field in critical_fields:
-            if field.value and field.confidence < manual_review_threshold:
+        for field_name in critical_fields_list:
+            field = getattr(document, field_name, None)
+            
+            if not field or not has_value(field.value):
+                # Critical field could not be read or is empty
+                issues.append(
+                    ValidationIssue(
+                        code=f"unreadable_{index}_{field_name}",
+                        severity="review",
+                        title=f"Required field could not be read: {field_name.replace('_', ' ').title()}",
+                        explanation=(
+                            f"The required field '{field_name.replace('_', ' ').title()}' on the "
+                            f"{dtype.replace('_', ' ').title()} could not be read. Please upload a clearer copy or verify it manually."
+                        ),
+                        document_ids=[str(index)],
+                    )
+                )
+            elif field.confidence < manual_review_threshold:
+                # Value was read but is uncertain
                 issues.append(
                     ValidationIssue(
                         code=f"low_confidence_{index}_{field_name}",
                         severity="review",
-                        title=f"Unclear field: {field_name.replace('_', ' ').title()}",
+                        title=f"Manual verification required: {field_name.replace('_', ' ').title()}",
                         explanation=(
-                            f"The {field_name.replace('_', ' ').title()} on your {document.document_type.replace('_', ' ').title()} "
-                            f"was read with low confidence ({int(field.confidence * 100)}%). Please review the value manually."
+                            f"The required field '{field_name.replace('_', ' ').title()}' on the "
+                            f"{dtype.replace('_', ' ').title()} was read with low confidence ({int(field.confidence * 100)}%)."
                         ),
                         document_ids=[str(index)],
                     )
                 )
 
-    # 3. Name comparisons across certificates (Fuzzy comparison)
-    # Filter documents that have a holder name and high confidence, excluding bank passbook for name mismatch
-    named_docs = [
-        (index, doc)
-        for index, doc in enumerate(documents)
-        if doc.holder_name.value
-        and doc.holder_name.confidence >= manual_review_threshold
-        and doc.document_type != "bank_passbook"
-        and doc.document_type != "unknown"
-    ]
+    # 3. Cross-document name comparisons (Fuzzy comparison using token sorting)
+    # Compile named documents list using holder_name or bank_account_holder (for bank passbook)
+    named_docs = []
+    for index, doc in enumerate(documents):
+        if doc.document_type == "unknown":
+            continue
+
+        # Bank passbook uses bank_account_holder; others use holder_name
+        name_field = doc.bank_account_holder if doc.document_type == "bank_passbook" else doc.holder_name
+        
+        # Only compare valid high-confidence names to prevent duplicate mismatch penalties
+        if name_field and has_value(name_field.value) and name_field.confidence >= manual_review_threshold:
+            named_docs.append((index, doc, name_field))
 
     # Find the threshold from comparison rules
     fuzzy_rule = next((r for r in rules.get("comparison_rules", []) if r["field"] == "holder_name"), None)
     threshold = fuzzy_rule["threshold"] if fuzzy_rule else 0.88
 
     if len(named_docs) >= 2:
-        base_index, base_doc = named_docs[0]
-        base_name = normalize_name(base_doc.holder_name.value)
+        base_index, base_doc, base_field = named_docs[0]
+        base_name = normalize_name(base_field.value)
 
-        for other_index, other_doc in named_docs[1:]:
-            other_name = normalize_name(other_doc.holder_name.value)
-            # Calculate fuzzy similarity ratio (0 to 100)
-            similarity = ratio(base_name, other_name) / 100.0
+        for other_index, other_doc, other_field in named_docs[1:]:
+            other_name = normalize_name(other_field.value)
+            
+            # Fuzzy comparisons: standard character ratio and token sorting ratio
+            char_score = ratio(base_name, other_name)
+            token_score = token_sort_ratio(base_name, other_name)
+            similarity = max(char_score, token_score) / 100.0
+            
+            # Reordered initials protection
+            tokens_base = base_name.split()
+            tokens_other = other_name.split()
+            is_reordered = char_score < 95.0 and token_score >= 95.0
+            has_initial = contains_initial(tokens_base) or contains_initial(tokens_other)
 
             if similarity < threshold:
                 issues.append(
@@ -146,21 +291,21 @@ def validate_documents(
                         title="Identity Name Mismatch",
                         explanation=(
                             f"Name mismatch detected between {base_doc.document_type.replace('_', ' ').title()} "
-                            f"('{base_doc.holder_name.value}') and {other_doc.document_type.replace('_', ' ').title()} "
-                            f"('{other_doc.holder_name.value}'). Verify that they belong to the same student."
+                            f"('{base_field.value}') and {other_doc.document_type.replace('_', ' ').title()} "
+                            f"('{other_field.value}'). Verify that they belong to the same student."
                         ),
                         document_ids=[str(base_index), str(other_index)],
                     )
                 )
-            elif similarity < 0.96:
+            elif similarity < 0.95 or (is_reordered and has_initial):
                 issues.append(
                     ValidationIssue(
                         code=f"name_variation_{base_index}_{other_index}",
                         severity="review",
-                        title="Name Spelling Variation",
+                        title="Name Spelling/Order Variation",
                         explanation=(
-                            f"A minor spelling or spacing variation was detected between "
-                            f"'{base_doc.holder_name.value}' and '{other_doc.holder_name.value}'. "
+                            f"A name order or minor spelling variation was detected between "
+                            f"'{base_field.value}' and '{other_field.value}'. "
                             "Please ensure this matches official application instructions."
                         ),
                         document_ids=[str(base_index), str(other_index)],
@@ -169,8 +314,6 @@ def validate_documents(
 
     # 4. Expiry checks
     today = date.today()
-    
-    # Expiry rules check
     expiry_rules = {r["document"]: r["expiry_field"] for r in rules.get("validity_rules", [])}
 
     for index, document in enumerate(documents):
@@ -178,7 +321,8 @@ def validate_documents(
             field_name = expiry_rules[document.document_type]
             expiry_field = getattr(document, field_name, None)
             
-            if not expiry_field or not expiry_field.value or expiry_field.confidence < manual_review_threshold:
+            # Only run checks if value is present and read confidently
+            if not expiry_field or not has_value(expiry_field.value) or expiry_field.confidence < manual_review_threshold:
                 continue
 
             expiry_value = expiry_field.value.strip()
@@ -198,6 +342,7 @@ def validate_documents(
                             official_source=source_url,
                         )
                     )
+                # Note: expiry_date == today is accepted as valid today (no issue added)
             except ValueError:
                 issues.append(
                     ValidationIssue(
@@ -206,7 +351,7 @@ def validate_documents(
                         title=f"Verify {document.document_type.replace('_', ' ').title()} Expiry",
                         explanation=(
                             f"The expiry date '{expiry_value}' on the "
-                            f"{document.document_type.replace('_', ' ').title()} is in an unreadable or non-standard format."
+                            f"{document.document_type.replace('_', ' ').title()} could not be parsed."
                         ),
                         document_ids=[str(index)],
                     )

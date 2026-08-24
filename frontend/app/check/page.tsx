@@ -36,6 +36,7 @@ type Issue = {
 };
 
 type Result = {
+  status: "READY" | "CORRECTIONS_REQUIRED" | "MANUAL_REVIEW_REQUIRED" | "UNABLE_TO_VERIFY";
   ready: boolean;
   score: number;
   documents: ExtractedDocument[];
@@ -48,6 +49,32 @@ type TamilTranslationItem = {
   translated_title: string;
   translated_explanation: string;
 };
+
+// Tamil fallback dictionary for standard error codes (ensures instant availability and voice reading success)
+const TAMIL_FALLBACK_DICTIONARY: Record<string, { title: string; explanation: string }> = {
+  "missing_income_certificate": {
+    title: "வருமானச் சான்றிதழ் இல்லை",
+    explanation: "உங்கள் ஆவணத் தொகுப்பில் வருமானச் சான்றிதழ் கண்டறியப்படவில்லை. தயவுசெய்து வருமானச் சான்றிதழைப் பதிவேற்றவும்."
+  },
+  "missing_community_certificate": {
+    title: "ஜாதிச் சான்றிதழ் இல்லை",
+    explanation: "உங்கள் ஆவணத் தொகுப்பில் ஜாதிச் சான்றிதழ் கண்டறியப்படவில்லை. தயவுசெய்து ஜாதிச் சான்றிதழைப் பதிவேற்றவும்."
+  },
+  "missing_student_id": {
+    title: "மாணவர் அடையாள அட்டை இல்லை",
+    explanation: "மாணவர் அடையாள அட்டை அல்லது போனஃபைட் சான்றிதழ் கண்டறியப்படவில்லை. தயவுசெய்து பதிவேற்றவும்."
+  },
+  "missing_bank_passbook": {
+    title: "வங்கி புத்தக நகல் இல்லை",
+    explanation: "வங்கி கணக்கு புத்தகத்தின் முதல் பக்க நகல் கண்டறியப்படவில்லை. தயவுசெய்து பதிவேற்றவும்."
+  },
+  "unknown_document": {
+    title: "அடையாளம் தெரியாத ஆவணம்",
+    explanation: "சில கோப்புகளை எங்களால் வகைப்படுத்த முடியவில்லை. சரியான சான்றிதழைப் பதிவேற்றியுள்ளீர்களா என்பதைச் சரிபார்க்கவும்."
+  }
+};
+
+const TAMIL_NUMBERS = ["ஒன்று", "இரண்டு", "மூன்று", "நான்கு", "ஐந்து", "ஆறு", "ஏழு", "எட்டு", "ஒன்பது", "பத்து"];
 
 export default function CheckPage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -66,7 +93,14 @@ export default function CheckPage() {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       const loadVoices = () => {
         const voices = window.speechSynthesis.getVoices();
-        const taVoice = voices.find(voice => voice.lang.includes("ta")) || null;
+        // Check for ta first, then fall back to name matching tamil
+        const taVoice =
+          voices.find((voice) =>
+            voice.lang.toLowerCase().startsWith("ta")
+          ) ??
+          voices.find((voice) =>
+            voice.name.toLowerCase().includes("tamil")
+          ) ?? null;
         setActiveVoice(taVoice);
       };
       loadVoices();
@@ -101,7 +135,6 @@ export default function CheckPage() {
 
     setFiles(prev => {
       const combined = [...prev, ...validFiles];
-      // Limit to max 6 files
       return combined.slice(0, 6);
     });
   };
@@ -117,27 +150,101 @@ export default function CheckPage() {
       return;
     }
 
-    // Cancel active speech
+    // Cancel active speech before starting a new request
     window.speechSynthesis.cancel();
 
-    if (!result || result.issues.length === 0) {
-      const announcement = new SpeechSynthesisUtterance("சரிபார்ப்புத் தேர்வில் பிழைகள் எதுவும் கண்டறியப்படவில்லை. உங்கள் ஆவணங்கள் தயாராக உள்ளன.");
+    if (!result) return;
+
+    const errorCount = result.issues.filter(i => i.severity === "error").length;
+    const reviewCount = result.issues.filter(i => i.severity !== "error").length;
+
+    // Fallback if Tamil voice is unavailable: read details in English instead of remaining silent
+    if (!activeVoice) {
+      alert("Tamil audio is unavailable on this device. Falling back to English speech synthesis.");
+      
+      let introText = `Verification result. Your readiness score is ${result.score} out of 100. `;
+      if (errorCount > 0) {
+        introText += `We found ${errorCount} critical errors, and `;
+      }
+      if (reviewCount > 0) {
+        introText += `${reviewCount} manual review notes. `;
+      }
+      introText += "The details are as follows:";
+
+      const introUtterance = new SpeechSynthesisUtterance(introText);
+      introUtterance.lang = "en-US";
+      window.speechSynthesis.speak(introUtterance);
+
+      result.issues.forEach((issue, idx) => {
+        const textToSpeak = `Note ${idx + 1}: ${issue.title}. Explanation: ${issue.explanation}`;
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = "en-US";
+        window.speechSynthesis.speak(utterance);
+      });
+      return;
+    }
+
+    // Getter helper for translations that checks local fallback dictionary as well
+    const getTamilText = (issue: Issue): string => {
+      if (showTamil && tamilIssues[issue.code]) {
+        return tamilIssues[issue.code].translated_explanation;
+      }
+      const code = issue.code;
+      if (TAMIL_FALLBACK_DICTIONARY[code]) {
+        return TAMIL_FALLBACK_DICTIONARY[code].explanation;
+      }
+      if (code.includes("name_mismatch")) {
+        return "பெயர் முரண்பாடு கண்டறியப்பட்டது. வெவ்வேறு ஆவணங்களில் பெயர்கள் பொருந்தவில்லை. சரிபார்க்கவும்.";
+      }
+      if (code.includes("name_variation")) {
+        return "ஆவணங்களில் பெயரின் எழுத்துக்களிலோ அல்லது இடைவெளியிலோ சிறிய மாற்றம் உள்ளது. சரிபார்க்கவும்.";
+      }
+      if (code.includes("expired_")) {
+        return "சான்றிதழின் காலம் முடிந்துவிட்டது. புதிய சான்றிதழைப் பதிவேற்றவும்.";
+      }
+      if (code.includes("low_confidence_")) {
+        return "ஆவணத்தில் உள்ள சில விவரங்கள் தெளிவாக இல்லை. கைமுறையாகச் சரிபார்க்கவும்.";
+      }
+      if (code.includes("duplicate_")) {
+        return "ஒரே சான்றிதழ் ஒன்றுக்கு மேற்பட்ட முறை பதிவேற்றப்பட்டுள்ளது.";
+      }
+      return issue.explanation;
+    };
+
+    const getTamilTitle = (issue: Issue): string => {
+      if (showTamil && tamilIssues[issue.code]) {
+        return tamilIssues[issue.code].translated_title;
+      }
+      const code = issue.code;
+      if (TAMIL_FALLBACK_DICTIONARY[code]) {
+        return TAMIL_FALLBACK_DICTIONARY[code].title;
+      }
+      if (code.includes("name_mismatch")) return "பெயர் முரண்பாடு";
+      if (code.includes("name_variation")) return "பெயர் எழுத்துப் பிழை";
+      if (code.includes("expired_")) return "காலாவதியான சான்றிதழ்";
+      if (code.includes("low_confidence_")) return "தெளிவற்ற விவரங்கள்";
+      if (code.includes("duplicate_")) return "இரட்டைப் பதிவு";
+      return issue.title;
+    };
+
+    if (result.issues.length === 0) {
+      const announcement = new SpeechSynthesisUtterance(
+        "ஆவண சரிபார்ப்பில் பிழைகள் எதுவும் கண்டறியப்படவில்லை. உங்களது ஆவணங்கள் தயாராக உள்ளன."
+      );
       announcement.lang = "ta-IN";
       if (activeVoice) announcement.voice = activeVoice;
       window.speechSynthesis.speak(announcement);
       return;
     }
-
-    // Speak overall score and count
-    const errorCount = result.issues.filter(i => i.severity === "error").length;
-    const reviewCount = result.issues.filter(i => i.severity !== "error").length;
-    let introText = `சரிபார்ப்பு முடிவு: உங்களது தயார்நிலை மதிப்பெண் நூற்றுக்கு ${result.score} ஆகும். `;
     
+    let introText = `சரிபார்ப்பு முடிவு. உங்களது தயார்நிலை மதிப்பெண் நூற்றுக்கு ${result.score} ஆகும். `;
     if (errorCount > 0) {
-      introText += `${errorCount} முக்கியமான பிழைகளும், `;
+      const errorCountTamil = TAMIL_NUMBERS[errorCount - 1] || errorCount.toString();
+      introText += `${errorCountTamil} முக்கியமான பிழைகளும், `;
     }
     if (reviewCount > 0) {
-      introText += `${reviewCount} மறுபரிசீலனை செய்ய வேண்டிய குறிப்புகளும் கண்டறியப்பட்டுள்ளன. `;
+      const reviewCountTamil = TAMIL_NUMBERS[reviewCount - 1] || reviewCount.toString();
+      introText += `${reviewCountTamil} மறுபரிசீலனை செய்ய வேண்டிய குறிப்புகளும் கண்டறியப்பட்டுள்ளன. `;
     }
     introText += "விவரங்கள் பின்வருமாறு:";
 
@@ -146,12 +253,12 @@ export default function CheckPage() {
     if (activeVoice) introUtterance.voice = activeVoice;
     window.speechSynthesis.speak(introUtterance);
 
-    // Speak each issue's Tamil translation
+    // Speak each issue's Tamil translation using Tamil index values
     result.issues.forEach((issue, idx) => {
-      const tamilItem = tamilIssues[issue.code];
-      const textToSpeak = tamilItem 
-        ? `குறிப்பு ${idx + 1}: ${tamilItem.translated_title}. விளக்கம்: ${tamilItem.translated_explanation}`
-        : `குறிப்பு ${idx + 1}: ${issue.title}. ${issue.explanation}`; // English fallback if translation not loaded yet
+      const numTamil = TAMIL_NUMBERS[idx] || (idx + 1).toString();
+      const title = getTamilTitle(issue);
+      const explanation = getTamilText(issue);
+      const textToSpeak = `குறிப்பு ${numTamil}: ${title}. விளக்கம்: ${explanation}`;
       
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.lang = "ta-IN";
@@ -177,13 +284,11 @@ export default function CheckPage() {
     stopSpeaking();
 
     const formData = new FormData();
-    formData.append("service_id", "tn_student_scholarship_demo");
+    formData.append("service_id", "tn_post_matric_scholarship_bc");
     files.forEach((file) => formData.append("files", file));
 
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/analyze`, {
+      const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
       });
@@ -203,7 +308,6 @@ export default function CheckPage() {
       const data: Result = await response.json();
       setResult(data);
 
-      // Trigger Tamil translation automatically if issues exist
       if (data.issues && data.issues.length > 0) {
         translateIssues(data.issues);
       }
@@ -217,9 +321,8 @@ export default function CheckPage() {
   // Request Tamil translations from backend
   async function translateIssues(issuesList: Issue[]) {
     setTranslating(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/translate`, {
+      const response = await fetch("/api/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ issues: issuesList }),
@@ -240,6 +343,37 @@ export default function CheckPage() {
     }
   }
 
+  // Map status categories to styling
+  const getStatusStyles = (status: string) => {
+    switch (status) {
+      case "UNABLE_TO_VERIFY":
+        return {
+          text: "UNABLE TO VERIFY",
+          bg: "bg-slate-100 text-slate-700 ring-slate-700/10",
+          desc: "The uploaded files could not be classified. Please verify file content and formats."
+        };
+      case "CORRECTIONS_REQUIRED":
+        return {
+          text: "CORRECTIONS REQUIRED",
+          bg: "bg-rose-50 text-rose-700 ring-rose-700/10",
+          desc: "We detected blocking inconsistencies (such as missing files or name mismatches). Correct them before applying."
+        };
+      case "MANUAL_REVIEW_REQUIRED":
+        return {
+          text: "MANUAL REVIEW REQUIRED",
+          bg: "bg-amber-50 text-amber-700 ring-amber-700/10",
+          desc: "No blocking errors were found, but some low-confidence fields require manual confirmation."
+        };
+      case "READY":
+      default:
+        return {
+          text: "READY",
+          bg: "bg-emerald-50 text-emerald-700 ring-emerald-700/10",
+          desc: "No blocking inconsistency was detected in the uploaded document fields."
+        };
+    }
+  };
+
   return (
     <main className="mx-auto max-w-6xl w-full px-4 py-8 sm:px-6 lg:py-12 flex-1">
       <div className="text-center mb-8">
@@ -247,7 +381,7 @@ export default function CheckPage() {
           Verification Console
         </h1>
         <p className="mt-2 text-sm text-slate-500 max-w-xl mx-auto">
-          Upload certificates to run structured analysis against scholarship rules.
+          Upload certificates to run structured analysis against BC/MBC Post-Matric Scholarship rules.
         </p>
       </div>
 
@@ -262,7 +396,7 @@ export default function CheckPage() {
                 Application Rule Template
               </label>
               <select className="mt-2 w-full rounded-xl border border-slate-200 p-3 text-sm bg-slate-50 font-medium">
-                <option>Tamil Nadu Student Scholarship — Prototype</option>
+                <option value="tn_post_matric_scholarship_bc">Tamil Nadu Post-Matric Scholarship for BC/MBC/DNC</option>
               </select>
             </div>
 
@@ -390,45 +524,46 @@ export default function CheckPage() {
             <div className="space-y-6 animate-fadeIn">
               
               {/* Header card with readiness score */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-6">
-                <div>
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    result.ready ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-700/10" : "bg-rose-50 text-rose-700 ring-1 ring-rose-700/10"
-                  }`}>
-                    {result.ready ? "Ready for Submission" : "Action Required"}
-                  </span>
-                  <h3 className="font-outfit text-xl font-bold text-slate-900 mt-2">
-                    {result.ready ? "No blocking issues found!" : "Documentation details require update"}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                    {result.ready 
-                      ? "All required files are present and match candidate identity profiles." 
-                      : "We found issues that typically cause application rejection. Fix them before applying."}
-                  </p>
-                </div>
+              {(() => {
+                const status = getStatusStyles(result.status);
+                return (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-6">
+                    <div>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.bg}`}>
+                        {status.text}
+                      </span>
+                      <h3 className="font-outfit text-xl font-bold text-slate-900 mt-2">
+                        Readiness Summary
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                        {status.desc}
+                      </p>
+                    </div>
 
-                {/* Circular Score Gauge */}
-                <div className="relative flex items-center justify-center">
-                  <svg className="w-24 h-24 transform -rotate-90">
-                    <circle cx="48" cy="48" r="40" stroke="#f1f5f9" strokeWidth="8" fill="transparent" />
-                    <circle
-                      cx="48"
-                      cy="48"
-                      r="40"
-                      stroke={result.score >= 80 ? "#10b981" : result.score >= 50 ? "#f59e0b" : "#ef4444"}
-                      strokeWidth="8"
-                      fill="transparent"
-                      strokeDasharray={251.2}
-                      strokeDashoffset={251.2 - (251.2 * result.score) / 100}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute flex flex-col items-center">
-                    <span className="font-outfit font-extrabold text-2xl text-slate-800">{result.score}</span>
-                    <span className="text-[10px] text-slate-400 font-semibold uppercase">Score</span>
+                    {/* Circular Score Gauge */}
+                    <div className="relative flex items-center justify-center">
+                      <svg className="w-24 h-24 transform -rotate-90">
+                        <circle cx="48" cy="48" r="40" stroke="#f1f5f9" strokeWidth="8" fill="transparent" />
+                        <circle
+                          cx="48"
+                          cy="48"
+                          r="40"
+                          stroke={result.score >= 80 ? "#10b981" : result.score >= 50 ? "#f59e0b" : "#ef4444"}
+                          strokeWidth="8"
+                          fill="transparent"
+                          strokeDasharray={251.2}
+                          strokeDashoffset={251.2 - (251.2 * result.score) / 100}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div className="absolute flex flex-col items-center">
+                        <span className="font-outfit font-extrabold text-2xl text-slate-800">{result.score}</span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase">Score</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Translation controls */}
               <div className="flex flex-wrap gap-2 items-center justify-between">
@@ -477,6 +612,23 @@ export default function CheckPage() {
                     const isReview = issue.severity === "review";
                     const hasTamil = showTamil && tamilIssues[issue.code];
                     
+                    const speakOneIssue = () => {
+                      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+                      window.speechSynthesis.cancel();
+                      
+                      const useTamil = showTamil && activeVoice !== null;
+                      const title = useTamil && tamilIssues[issue.code] ? tamilIssues[issue.code].translated_title : issue.title;
+                      const expl = useTamil && tamilIssues[issue.code] ? tamilIssues[issue.code].translated_explanation : issue.explanation;
+                      const text = `${title}. ${expl}`;
+                      
+                      const utterance = new SpeechSynthesisUtterance(text);
+                      utterance.lang = useTamil ? "ta-IN" : "en-US";
+                      if (useTamil && activeVoice) {
+                        utterance.voice = activeVoice;
+                      }
+                      window.speechSynthesis.speak(utterance);
+                    };
+
                     return (
                       <div
                         key={issue.code}
@@ -488,9 +640,13 @@ export default function CheckPage() {
                               : "border-slate-200 hover:bg-slate-50/20"
                         }`}
                       >
-                        <span className={`text-lg p-1 rounded-lg ${
-                          isError ? "bg-rose-50 text-rose-600" : isReview ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-600"
-                        }`}>
+                        <span 
+                          onClick={speakOneIssue}
+                          className={`text-lg p-1 rounded-lg cursor-pointer hover:scale-105 transition-transform ${
+                            isError ? "bg-rose-50 text-rose-600" : isReview ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-600"
+                          }`}
+                          title="Speak this issue"
+                        >
                           {isError ? "⛔" : isReview ? "⚠️" : "ℹ️"}
                         </span>
                         
@@ -516,9 +672,10 @@ export default function CheckPage() {
                               {issue.document_ids.map(id => {
                                 const indexVal = parseInt(id);
                                 const doc = result.documents[indexVal];
+                                const filename = files[indexVal]?.name || "uploaded-file";
                                 return (
                                   <span key={id} className="inline-flex items-center text-[10px] bg-slate-100 text-slate-600 font-medium px-2 py-0.5 rounded-md border border-slate-200">
-                                    📄 Doc #{indexVal + 1}: {doc ? doc.document_type.replace("_", " ").toUpperCase() : "Unknown"}
+                                    📄 {doc ? doc.document_type.replace("_", " ").toUpperCase() : "Unknown"} ({filename})
                                   </span>
                                 );
                               })}
@@ -547,46 +704,54 @@ export default function CheckPage() {
               {/* Extracted Metadata Inspector */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
                 <h3 className="font-outfit text-base font-bold text-slate-950">3. Extracted Metadata Inspection</h3>
-                <p className="text-xs text-slate-500">
-                  Inspect what fields Vertex AI Gemini read on your documents to double-check spelling or confidence levels.
-                </p>
+                
+                {/* Information Tip Note explaining Model-Reported Confidence */}
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-xl text-xs text-blue-800">
+                  <p className="font-bold">💡 Verification Tip:</p>
+                  <p className="mt-1">
+                    Model-reported confidence is an AI estimate. Compare the extracted value with the highlighted source text to verify accuracy.
+                  </p>
+                </div>
 
                 <div className="space-y-4">
-                  {result.documents.map((doc, idx) => (
-                    <details key={idx} className="group border border-slate-100 rounded-xl overflow-hidden shadow-sm [&_summary::-webkit-details-marker]:hidden">
-                      <summary className="flex items-center justify-between p-4 bg-slate-50 cursor-pointer hover:bg-slate-100/70 transition-colors select-none">
-                        <div className="flex items-center gap-3">
-                          <span className="text-lg">📄</span>
-                          <div>
-                            <span className="font-bold text-sm text-slate-800 uppercase tracking-tight">
-                              Doc #{idx + 1}: {doc.document_type.replace("_", " ")}
-                            </span>
-                            <span className="block text-[10px] text-slate-400 font-medium mt-0.5">
-                              Classification Confidence: {intPercent(doc.document_type_confidence)}%
-                            </span>
+                  {result.documents.map((doc, idx) => {
+                    const filename = files[idx]?.name || "N/A";
+                    return (
+                      <details key={idx} className="group border border-slate-100 rounded-xl overflow-hidden shadow-sm [&_summary::-webkit-details-marker]:hidden">
+                        <summary className="flex items-center justify-between p-4 bg-slate-50 cursor-pointer hover:bg-slate-100/70 transition-colors select-none">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg">📄</span>
+                            <div>
+                              <span className="font-bold text-sm text-slate-800 uppercase tracking-tight">
+                                Doc #{idx + 1}: {doc.document_type.replace("_", " ")}
+                              </span>
+                              <span className="block text-[10px] text-slate-400 font-semibold mt-0.5">
+                                File: {filename} (Model-reported classification confidence: {intPercent(doc.document_type_confidence)}%)
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                        </summary>
+                        
+                        <div className="p-4 border-t border-slate-100 bg-white text-xs space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FieldRow label="Holder Name" field={doc.holder_name} />
+                            <FieldRow label="Certificate ID" field={doc.certificate_number} />
+                            <FieldRow label="Date of Birth" field={doc.date_of_birth} />
+                            <FieldRow label="Issue Date" field={doc.issue_date} />
+                            <FieldRow label="Expiry Date" field={doc.expiry_date} />
+                            <FieldRow label="Annual Income" field={doc.annual_income} />
+                            <FieldRow label="Community / Caste" field={doc.community} />
+                            <FieldRow label="Bank Holder" field={doc.bank_account_holder} />
+                            <FieldRow label="Bank Acc (Last 4)" field={doc.bank_account_last4} />
+                            <FieldRow label="Bank IFSC" field={doc.ifsc} />
+                            <FieldRow label="Institution Name" field={doc.institution_name} />
+                            <FieldRow label="Academic Year" field={doc.academic_year} />
                           </div>
                         </div>
-                        <span className="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
-                      </summary>
-                      
-                      <div className="p-4 border-t border-slate-100 bg-white text-xs space-y-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <FieldRow label="Holder Name" field={doc.holder_name} />
-                          <FieldRow label="Certificate ID" field={doc.certificate_number} />
-                          <FieldRow label="Date of Birth" field={doc.date_of_birth} />
-                          <FieldRow label="Issue Date" field={doc.issue_date} />
-                          <FieldRow label="Expiry Date" field={doc.expiry_date} />
-                          <FieldRow label="Annual Income" field={doc.annual_income} />
-                          <FieldRow label="Community / Caste" field={doc.community} />
-                          <FieldRow label="Bank Holder" field={doc.bank_account_holder} />
-                          <FieldRow label="Bank Acc (Last 4)" field={doc.bank_account_last4} />
-                          <FieldRow label="Bank IFSC" field={doc.ifsc} />
-                          <FieldRow label="Institution Name" field={doc.institution_name} />
-                          <FieldRow label="Academic Year" field={doc.academic_year} />
-                        </div>
-                      </div>
-                    </details>
-                  ))}
+                      </details>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -608,16 +773,23 @@ function intPercent(val: number) {
   return Math.round(val * 100);
 }
 
-// Field Display Row Helper Component
+// Field Display Row Helper Component with low-confidence warning indicators
 function FieldRow({ label, field }: { label: string; field: ExtractedField }) {
   if (!field || field.value === undefined || field.value === null) return null;
   const isLowConfidence = field.confidence < 0.80;
   
   return (
-    <div className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/30 flex items-center justify-between gap-4">
+    <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-4 transition-colors ${
+      isLowConfidence ? "border-amber-200 bg-amber-50/20" : "border-slate-100 bg-slate-50/30"
+    }`}>
       <div>
         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
-        <span className="font-semibold text-slate-800 mt-0.5 block">{field.value}</span>
+        <span className="font-semibold text-slate-800 mt-0.5 block flex items-center gap-1.5">
+          {field.value}
+          {isLowConfidence && (
+            <span className="text-[10px] text-amber-600" title="Low Confidence - Verify manually">⚠️</span>
+          )}
+        </span>
         {field.evidence && (
           <span className="block text-[10px] text-slate-400 mt-1 italic leading-tight">
             &quot;{field.evidence}&quot;

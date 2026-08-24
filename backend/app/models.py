@@ -11,6 +11,13 @@ DocumentType = Literal[
     "unknown"
 ]
 
+VerificationStatus = Literal[
+    "READY",
+    "CORRECTIONS_REQUIRED",
+    "MANUAL_REVIEW_REQUIRED",
+    "UNABLE_TO_VERIFY"
+]
+
 class ExtractedField(BaseModel):
     value: Optional[str] = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -47,6 +54,7 @@ class ValidationIssue(BaseModel):
     official_source: Optional[str] = None
 
 class AnalysisResult(BaseModel):
+    status: VerificationStatus
     ready: bool
     score: int
     documents: List[ExtractedDocument] = Field(default_factory=list)

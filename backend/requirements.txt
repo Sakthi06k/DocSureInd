@@ -9,3 +9,6 @@ rapidfuzz
 python-dateutil
 pymupdf
 pillow
+pytest
+pytest-asyncio
+httpx
