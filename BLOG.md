@@ -256,8 +256,12 @@ DocSureInd draws that line explicitly. Gemini does what only a multimodal model 
 
 If that separation holds, a student like Priya finds out about a name mismatch on a Sunday evening at home, instead of on a Tuesday morning at a counter.
 
-**🔗 Try the staging demonstration:** [https://docsureind-web-staging-lxanronfuq-el.a.run.app](https://docsureind-web-staging-lxanronfuq-el.a.run.app)
-*Staging demonstration — use synthetic or redacted documents only.*
+## 🌐 Links & Demos
+
+* **Official Website:** [docsureind.com](https://your-main-website-link.com)
+* **Staging Demo:** [DocSureInd Staging App](https://docsureind-web-staging-lxanronfuq-el.a.run.app)
+
+> ⚠️ **Notice:** When testing the staging demonstration, please use **synthetic or redacted documents only**.
 
 Feedback, rule corrections, and reviewed-source contributions are all genuinely welcome. The rules are the hard part, and rules get better with more eyes on them.
 

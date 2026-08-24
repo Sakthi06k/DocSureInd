@@ -27,7 +27,9 @@ DocSureInd is an AI-powered **application-readiness platform** that helps users 
 
 ## ⚠️ Staging demonstration — read this first
 
-**🔗 Live demo:** https://docsureind-web-staging-lxanronfuq-el.a.run.app
+**🔗 Live demo:** https://drive.google.com/file/d/1jzdqWrkh7EIbgXODGnUw_DjjQ3WArAjN/view?usp=sharing
+
+**🔗 Access Application:** https://docsureind-web-staging-lxanronfuq-el.a.run.app
 
 > **Staging demonstration — use synthetic or redacted documents only.**
 >
@@ -436,9 +438,9 @@ The script:
 
 | Control | Limit |
 | --- | --- |
-| Files per request | 6 |
-| Size per file | 8 MB |
-| Total request size | 24 MB |
+| Files per request | 10 |
+| Size per file | 10 MB |
+| Total request size | 30 MB |
 | Pages per PDF | 10 |
 | Allowed types | PDF, JPG/JPEG, PNG |
 
@@ -523,7 +525,7 @@ Please open an issue before starting significant work so scope can be agreed upf
 
 ## 📄 License
 
-Released under `[LICENSE_NAME]`. See [`LICENSE`](LICENSE) for details.
+*Work in Progress* — License to be determined upon project release.
 
 ---
 
@@ -531,10 +533,10 @@ Released under `[LICENSE_NAME]`. See [`LICENSE`](LICENSE) for details.
 
 **Sakthivel Karthikeyan** — Software Engineer
 
-- GitHub: `[GITHUB_PROFILE_URL]`
-- LinkedIn: `[LINKEDIN_URL]`
-- Email: `[CONTACT_EMAIL]`
-
+- GitHub: `https://github.com/Sakthi06k`
+- LinkedIn: `https://www.linkedin.com/in/sakthi6k/`
+- Email: `sakthivelkarthikeyan2002@gmail.com`
+- Portfolio: `https://sakthivelk.netlify.app/`
 ---
 
 ## ⚖️ Disclaimer
